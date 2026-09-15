@@ -379,6 +379,10 @@ The service speaks **plain HTTP**: anywhere beyond localhost, put a TLS-terminat
 Inference runs one request at a time (the pipeline is not thread-safe), so long documents queue up;
 give clients a generous timeout.
 
+Deploying on a server with **Portainer**? [`deploy/portainer-stack.yml`](deploy/portainer-stack.yml)
+is a ready-to-paste stack: it pulls the pre-built image from a registry, takes `PII_API_KEY` from
+the stack's environment variables (not from the YAML), and has the build/push/update steps at the top.
+
 > The image is **CPU-only**, which is the intended deployment (see the table above); `torch` and
 > `transformers` are pinned to the versions it was verified with. A GPU build would need the `cu128`
 > wheels and the NVIDIA container runtime. Note that `Dockerfile.linux` is a different thing: it is

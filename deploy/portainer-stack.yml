@@ -1,0 +1,72 @@
+# deploy/portainer-stack.yml — Rizzo PII come API server, per uno Stack di Portainer
+#
+# A differenza di docker-compose.yml (build locale, solo localhost) qui l'immagine
+# si prende GIA' COSTRUITA da un registry e il servizio e' pensato per altre app.
+#
+# 1) build + push (dalla root della repo):
+#      docker build --platform linux/amd64 -t ghcr.io/atasc/rizzo-pii:2.0.0-api .
+#      echo "<TOKEN write:packages>" | docker login ghcr.io -u atasc --password-stdin
+#      docker push ghcr.io/atasc/rizzo-pii:2.0.0-api
+# 2) Portainer -> Registries -> Custom registry: ghcr.io, utente atasc,
+#    password = token con solo read:packages (il pacchetto GHCR nasce privato)
+# 3) Portainer -> Stacks -> Add stack -> incolla questo file, e in
+#    "Environment variables" aggiungi PII_API_KEY
+#    (python3 -c "import secrets;print(secrets.token_urlsafe(32))"): cosi' la chiave
+#    non sta nello YAML. Senza chiave il container NON parte (fail-closed).
+#
+# Aggiornare: nuovo tag (mai `latest`: si deve sapere cosa gira e poter tornare
+# indietro), push, cambia IMAGE_TAG nelle variabili dello stack -> Update the stack.
+
+services:
+  rizzo-pii:
+    image: ghcr.io/atasc/rizzo-pii:${IMAGE_TAG:-2.0.0-api}
+    container_name: rizzo-pii
+    restart: unless-stopped
+
+    # HTTP in chiaro: chiave e documenti viaggiano nella richiesta. Con un reverse
+    # proxy sulla macchina (Traefik, Nginx Proxy Manager, Caddy) togli `ports`, metti
+    # il container nella rete del proxy e pubblica solo l'HTTPS. Se esponi la porta
+    # direttamente, limitala col firewall agli IP delle app client.
+    ports:
+      - "${PII_PUBLISH_PORT:-5005}:5005"
+
+    environment:
+      PII_API_MODE: "1"
+      PII_API_KEY: ${PII_API_KEY:?imposta PII_API_KEY nelle variabili dello stack}
+      PII_HOST: 0.0.0.0
+      PII_PORT: "5005"
+      # Nessuna chiamata a Hugging Face a runtime: il modello e' nell'immagine.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      OMP_NUM_THREADS: "4"
+      # Solo se l'API si chiama da JavaScript in un browser:
+      # PII_CORS_ORIGINS: https://app.tuodominio.it
+      # Default del servizio (ogni richiesta puo' passare i propri):
+      # PII_MAPPING: "1"
+      # PII_EXCLUDE_TAGS: AGE,GENDER
+      # PII_MAX_UPLOAD_MB: "50"
+
+    volumes:
+      - rizzo-pii-home:/home/app
+
+    # Il HEALTHCHECK viene dall'immagine (/health, 503 finche' il modello carica).
+
+    # Inferenza CPU, una richiesta alla volta: un PDF lungo sono minuti.
+    # Il modello da solo occupa ~1.2 GB di RAM.
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 6G
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  rizzo-pii-home:
