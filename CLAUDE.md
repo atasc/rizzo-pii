@@ -147,7 +147,8 @@ modelli in `models/<versione>/`, artefatti dei run in `experiments/<run>/`, doc 
   rende `POST /settings` 403 (le preferenze globali non si cambiano via rete: si passano per
   richiesta) e fa tornare **ogni** errore in JSON. `PII_API_KEY` (CSV, ≥ 16 char) / `PII_API_KEY_FILE`:
   `Authorization: Bearer` o `X-API-Key` su tutto tranne `/health[z]`, vale anche fuori dalla
-  modalità API. **Fail-closed**: API mode senza chiavi → exit 2 prima di caricare il modello, salvo
+  modalità API. **Fail-closed**: API mode senza chiavi → exit prima di caricare il modello (2; **3 sotto
+  gunicorn** = `WORKER_BOOT_ERROR`, altrimenti il master rilancia il worker in loop e il container resta "Up"), salvo
   `PII_API_INSECURE=1` (auth nel reverse proxy). `PII_CORS_ORIGINS`, `PII_MAX_UPLOAD_MB`. Non
   dipende dal modello → `tests/test_api_mode.py` lo prova su una Flask app finta. Senza env il
   comportamento di desktop/Tauri non cambia. In `app.py` l'inferenza è serializzata da `_NLP_LOCK`

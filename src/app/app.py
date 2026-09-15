@@ -136,7 +136,10 @@ try:
     API = api_mode.load()
 except api_mode.ConfigError as _e:
     print(f"ERRORE: {_e}", file=sys.stderr)
-    sys.exit(2)
+    # Sotto gunicorn app.py e' importato da un worker: con un codice qualsiasi il master
+    # lo rilancia all'infinito (container "Up" in loop). 3 = WORKER_BOOT_ERROR, l'unico
+    # (con 4) che fa fermare il master e quindi il container, con l'errore nei log.
+    sys.exit(3 if "gunicorn" in sys.modules else 2)
 if API.enabled:
     print("Modalita' API server: UI e /config disattivati, preferenze globali in sola lettura; "
           + ("autenticazione con API key" if API.auth_required
