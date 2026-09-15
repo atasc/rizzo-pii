@@ -44,3 +44,4 @@ venv/
 Thumbs.db
 *.log
 /.idea/
+.idea/
