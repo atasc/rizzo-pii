@@ -9,6 +9,9 @@
 #   docker build -t rizzo-pii .
 #   docker run --rm -p 5005:5005 rizzo-pii        # -> http://127.0.0.1:5005
 #
+# Come API per app esterne (niente UI, API key obbligatoria, vedi src/app/api_mode.py):
+#   docker run --rm -p 5005:5005 -e PII_API_MODE=1 -e PII_API_KEY=... rizzo-pii
+#
 # NB: e' un'immagine CPU. Per la GPU servirebbe il torch cu128 + nvidia-runtime;
 # per l'inferenza su un documento la CPU basta (vedi README, sezione Deployment).
 # Per la build dei bundle Linux (.deb/.AppImage) c'e' Dockerfile.linux, altra cosa.

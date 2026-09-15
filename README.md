@@ -346,6 +346,39 @@ docker run -d -p 127.0.0.1:8080:8080 -e PII_PORT=8080 \
   -e PII_EXCLUDE_TAGS=AGE,GENDER -e PII_MAPPING=0 rizzo-pii
 ```
 
+#### As an API server for other apps
+
+`PII_API_MODE=1` turns the container into a service for **other applications** rather than a
+personal UI: the web UI, `/config` and `/port-check` are gone (404), `POST /settings` is refused
+(403 — one client must not be able to switch the dictionary off or exclude tags for everyone; pass
+`exclude_tags` / `include_mapping` per request instead), every error is JSON with the right status,
+and **an API key is mandatory** on everything except `/health`. Without a key the server refuses to
+start.
+
+```bash
+export PII_API_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))")
+docker run -d --name rizzo-pii -p 5005:5005 \
+  -e PII_API_MODE=1 -e PII_API_KEY rizzo-pii
+
+curl -X POST localhost:5005/analyze -H "Authorization: Bearer $PII_API_KEY" \
+     -H 'Content-Type: application/json' \
+     -d '{"text": "Mario Rossi, IBAN IT60X0542811101000000123456", "include_mapping": true}'
+```
+
+| Variable | Meaning |
+|---|---|
+| `PII_API_MODE=1` | API-only service, as described above |
+| `PII_API_KEY=k1,k2` | accepted keys (≥ 16 chars; several = rotation). Header `Authorization: Bearer <k>` or `X-API-Key: <k>`. Enforced whenever set, API mode or not |
+| `PII_API_KEY_FILE=/run/secrets/…` | same, one key per line (Docker/Kubernetes secrets) |
+| `PII_API_INSECURE=1` | allow API mode without keys — only when a reverse proxy in front does the auth |
+| `PII_CORS_ORIGINS=https://app.example` | origins allowed to call from a browser (`*` for any). Unset = no CORS headers; server-to-server calls don't need them |
+| `PII_MAX_UPLOAD_MB=50` | request size limit (413 above) |
+
+The service speaks **plain HTTP**: anywhere beyond localhost, put a TLS-terminating reverse proxy
+(nginx, Traefik, Caddy) in front of it — the key and the documents travel in that request.
+Inference runs one request at a time (the pipeline is not thread-safe), so long documents queue up;
+give clients a generous timeout.
+
 > The image is **CPU-only**, which is the intended deployment (see the table above); `torch` and
 > `transformers` are pinned to the versions it was verified with. A GPU build would need the `cu128`
 > wheels and the NVIDIA container runtime. Note that `Dockerfile.linux` is a different thing: it is

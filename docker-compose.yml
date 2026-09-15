@@ -35,6 +35,18 @@ services:
       # Evita che torch saturi tutti i core; alza se la macchina e' dedicata.
       OMP_NUM_THREADS: 4
 
+      # --- Modalita' API server (app esterne) — vedi src/app/api_mode.py ---
+      # Niente UI, /config spento, preferenze globali in sola lettura, errori JSON,
+      # API key obbligatoria (Authorization: Bearer <chiave> oppure X-API-Key).
+      # Senza chiave il server NON parte. Chiave: python -c "import secrets;print(secrets.token_urlsafe(32))"
+      # PII_API_MODE: 1
+      # PII_API_KEY: ${PII_API_KEY:?imposta PII_API_KEY nel .env}
+      # PII_CORS_ORIGINS: https://app.example.it   # solo se chiami l'API da un browser
+      # PII_MAX_UPLOAD_MB: 50
+      # Default del servizio (ogni richiesta puo' comunque passare i propri):
+      # PII_MAPPING: 1
+      # PII_EXCLUDE_TAGS: AGE,GENDER
+
     volumes:
       # Preferenze UI (~/.local/share/rizzo-pii): senza questo si perdono
       # a ogni ricreazione del container.

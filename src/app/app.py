@@ -36,6 +36,11 @@ Endpoint HTTP:
                   (/tags e' un alias storico degli stessi due endpoint)
   GET  /config, POST /config, GET /port-check   host/porta del server
 
+Modalita' API server (container, app esterne): PII_API_MODE=1 + PII_API_KEY=... ->
+  niente UI ne' /config, POST /settings -> 403, errori sempre JSON, chiave obbligatoria
+  (Authorization: Bearer / X-API-Key) su tutto tranne /health. CORS con PII_CORS_ORIGINS.
+  Dettagli in api_mode.py.
+
 Avvio:  python app.py   ->   http://127.0.0.1:5005
 Configurazione host/porta (precedenza): CLI --host/--port > env PII_HOST/PII_PORT >
   config.json (vedi server_config.py) > default 127.0.0.1:5005
@@ -57,6 +62,7 @@ import torch
 from flask import (Flask, jsonify, render_template_string, request,
                    send_from_directory)
 
+import api_mode
 import pdf_export
 import server_config
 # Rete REGEX + CHECKSUM: modulo a parte, senza dipendenze dal modello. I nomi
@@ -124,6 +130,20 @@ APP_VERSION = "2.0.0"                    # versione mostrata nell'UI (allineata 
 MAX_WORDS = 120      # parole per chunk (~180 subword, sotto i 512 del training)
 OVERLAP = 20         # parole di sovrapposizione tra chunk consecutivi
 
+# Modalita' API server (vedi api_mode.py). Letta PRIMA del modello: una configurazione
+# pericolosa (API senza chiave) deve fermare il processo subito, non dopo 30 s di caricamento.
+try:
+    API = api_mode.load()
+except api_mode.ConfigError as _e:
+    print(f"ERRORE: {_e}", file=sys.stderr)
+    sys.exit(2)
+if API.enabled:
+    print("Modalita' API server: UI e /config disattivati, preferenze globali in sola lettura; "
+          + ("autenticazione con API key" if API.auth_required
+             else "SENZA autenticazione (PII_API_INSECURE=1)"))
+elif API.auth_required:
+    print("API key attiva: l'UI nel browser non la invia, usa PII_API_MODE=1 per un servizio solo-API.")
+
 # --------------------------------------------------------------------------- #
 # Caricamento modello (una sola volta all'avvio)
 # --------------------------------------------------------------------------- #
@@ -137,9 +157,13 @@ nlp = pipeline(
     device=device,
 )
 print("Modello pronto.")
+# Una sola inferenza alla volta: gunicorn serve con piu' thread e la pipeline non e'
+# thread-safe (il tokenizer fast in Rust puo' fallire con "Already borrowed"). Su CPU
+# torch parallelizza gia' dentro la singola chiamata, quindi si perde poco.
+_NLP_LOCK = threading.Lock()
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+# MAX_CONTENT_LENGTH (PII_MAX_UPLOAD_MB, default 50 MB), auth, CORS ed errori: api_mode.install()
 
 # Estensioni accettate dall'upload (il PDF passa da PyMuPDF, il resto e' testo puro).
 TEXT_EXTS = {".md", ".markdown", ".txt", ".text"}
@@ -285,7 +309,8 @@ def detect_model(text):
     chunks = chunk_text(text)
     ents = []
     if chunks:
-        results = nlp([c for c, _ in chunks])
+        with _NLP_LOCK:
+            results = nlp([c for c, _ in chunks])
         if isinstance(results, dict):                 # singolo chunk -> normalizza
             results = [results]
         for (_, off), res in zip(chunks, results):
@@ -469,9 +494,7 @@ def favicon():
     return ("", 204)
 
 
-@app.errorhandler(404)
-def not_found(_e):
-    return _page()
+api_mode.install(app, API, ui_page=_page)
 
 
 @app.route("/health")
@@ -490,6 +513,8 @@ def health():
         "tags": len(TAG_NAMES),
         "excluded_tags": EXCLUDED_TAGS,
         "mapping_enabled": MAPPING_ENABLED,
+        "api_mode": API.enabled,
+        "auth_required": API.auth_required,
     }
     return jsonify(body), (200 if ready else 503)
 
@@ -743,13 +768,16 @@ def doc_file(doc_id):
 @app.route("/settings", methods=["GET"])
 @app.route("/tags", methods=["GET"])
 def settings_get():
-    return jsonify({
+    body = {
         "tags": [{"tag": t, "it": it, "en": en, "example": ex} for t, it, en, ex in TAGS],
         "excluded_tags": EXCLUDED_TAGS,
         "mapping_enabled": MAPPING_ENABLED,
-        "config_path": str(server_config.prefs_path()),
         "env_override": "PII_EXCLUDE_TAGS" in os.environ or "PII_MAPPING" in os.environ,
-    })
+        "read_only": API.enabled,
+    }
+    if not API.enabled:                     # un path del filesystem non serve a un client remoto
+        body["config_path"] = str(server_config.prefs_path())
+    return jsonify(body)
 
 
 @app.route("/settings", methods=["POST"])

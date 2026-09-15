@@ -142,6 +142,16 @@ modelli in `models/<versione>/`, artefatti dei run in `experiments/<run>/`, doc 
   non cercabili senza devastare il documento. Se in tutto il PDF non si trova **nessuna** occorrenza
   → `422`, non un PDF "anonimizzato" che non lo è (caso tipico: scansione, serve OCR → punti 2-4
   della issue). Nessuna dipendenza dal modello: `pdf_export.py` è testabile in isolamento.
+- `api_mode.py` — **modalità API server** per app esterne (container), tutta da env letto all'import
+  (gunicorn importa `app:app`): `PII_API_MODE=1` spegne UI/`/assets`/`/config`/`/port-check` (404),
+  rende `POST /settings` 403 (le preferenze globali non si cambiano via rete: si passano per
+  richiesta) e fa tornare **ogni** errore in JSON. `PII_API_KEY` (CSV, ≥ 16 char) / `PII_API_KEY_FILE`:
+  `Authorization: Bearer` o `X-API-Key` su tutto tranne `/health[z]`, vale anche fuori dalla
+  modalità API. **Fail-closed**: API mode senza chiavi → exit 2 prima di caricare il modello, salvo
+  `PII_API_INSECURE=1` (auth nel reverse proxy). `PII_CORS_ORIGINS`, `PII_MAX_UPLOAD_MB`. Non
+  dipende dal modello → `tests/test_api_mode.py` lo prova su una Flask app finta. Senza env il
+  comportamento di desktop/Tauri non cambia. In `app.py` l'inferenza è serializzata da `_NLP_LOCK`
+  (gunicorn ha 4 thread e la pipeline HF non è thread-safe).
 - `serve.py` — entry **headless** (solo Flask, niente browser): è il backend dell'app Tauri; log su
   `%LOCALAPPDATA%\rizzo-pii\backend.log`. Pre-check porta + `sys.exit(76)` se occupata.
   `desktop_app.py` — entry PyInstaller legacy (apre il browser); stesso pre-check.

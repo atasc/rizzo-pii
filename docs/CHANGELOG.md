@@ -5,6 +5,33 @@ Le voci più recenti in alto. (Codice: `src/training/train_pii.py` salvo diverso
 
 ---
 
+## 2026-09-15 — Modalità API server (`src/app/api_mode.py`)
+
+Il container era pensato come UI per una persona: nessuna autenticazione, e chi raggiungeva la
+porta poteva anche **cambiare le preferenze globali** (`POST /settings` spegne il dizionario o
+esclude tag per tutti) o riscrivere `/config`. Per usarlo come servizio di anonimizzazione da
+altre applicazioni ora c'è `PII_API_MODE=1`:
+
+- **API key obbligatoria** (`PII_API_KEY`, anche più d'una per la rotazione, o `PII_API_KEY_FILE`
+  per i secrets) su tutto tranne `/health`; confronto a tempo costante. **Fail-closed**: in modalità
+  API senza chiave il processo esce *prima* di caricare il modello, a meno di `PII_API_INSECURE=1`
+  (autenticazione delegata al reverse proxy);
+- **UI, `/config` e `/port-check` spenti** (404), **`POST /settings` → 403**: le preferenze si
+  passano per richiesta (`exclude_tags`, `include_mapping`) o si fissano all'avvio via env;
+- **errori sempre JSON** con lo status giusto. Prima un path sbagliato tornava la pagina dell'UI
+  con **200**, e 405/413 l'HTML di Flask: un client che guarda solo lo status scambiava un errore
+  per un successo. Il 500 in API non riporta il messaggio dell'eccezione (può citare il documento);
+- **CORS** opzionale (`PII_CORS_ORIGINS`), con i preflight risolti prima dell'auth ed esposti gli
+  header `X-PII-*` di `/pdf`; `PII_MAX_UPLOAD_MB` rende configurabile il limite di 50 MB.
+
+Indipendente dalla modalità: l'inferenza è ora serializzata da un lock. gunicorn serve con 4
+thread e la pipeline HF non è thread-safe (il tokenizer fast può fallire con "Already borrowed");
+su CPU torch parallelizza già dentro la singola chiamata, quindi si perde poco.
+
+Senza variabili d'ambiente app desktop, Tauri e UI si comportano come prima (unica differenza: un
+500 non gestito è JSON invece dell'HTML di Flask). Test in `tests/test_api_mode.py`, su una Flask
+app finta: non serve il modello.
+
 ## 2026-08-07 — `Dockerfile`: l'app come webapp in un container
 
 Finora l'unico modo di far girare l'app era l'installer desktop o `python src/app/app.py` con
