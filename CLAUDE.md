@@ -5,7 +5,8 @@ delle cartelle in **[README.md](README.md)**. Documenti di dettaglio:
 **[docs/TASSONOMIA_TAG.md](docs/TASSONOMIA_TAG.md)** (i 22 tag),
 **[docs/DATASET.md](docs/DATASET.md)** (composizione completa di train/validation) e
 **[docs/TRAINING.md](docs/TRAINING.md)** (unione dei due dataset HF, accortezze sui tag,
-iperparametri).
+iperparametri). Deploy come **API server su Docker/Portainer** (build, smoke test, push su GHCR,
+stack, problemi noti dell'ambiente): **[docs/DOCKER.md](docs/DOCKER.md)** — seguirla passo passo.
 
 ## Cos'è questo progetto
 
