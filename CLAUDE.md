@@ -7,6 +7,8 @@ delle cartelle in **[README.md](README.md)**. Documenti di dettaglio:
 **[docs/TRAINING.md](docs/TRAINING.md)** (unione dei due dataset HF, accortezze sui tag,
 iperparametri). Deploy come **API server su Docker/Portainer** (build, smoke test, push su GHCR,
 stack, problemi noti dell'ambiente): **[docs/DOCKER.md](docs/DOCKER.md)** — seguirla passo passo.
+Client dell'API da un'**applicazione Java** (contratto verificato, design, codice di riferimento,
+test, checklist): **[docs/JAVA_CLIENT.md](docs/JAVA_CLIENT.md)**.
 
 ## Cos'è questo progetto
 
