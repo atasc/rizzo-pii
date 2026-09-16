@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>rizzo-pii Playground</title>
+<meta name="description" content="Pagina di prova dell'API di anonimizzazione rizzo-pii: testo o file, tag esclusi, dizionario reversibile, ripristino." />
+<link rel="icon" type="image/png" href="assets/mascot_shield.png" />
+<!--
+  Playground dell'API rizzo-pii. Pagina STATICA, nessuna dipendenza, nessuna CDN:
+  parla con un server rizzo-pii (app.py da PyCharm, serve.py, container) via fetch.
+
+  Il server deve mandare gli header CORS, perche' la pagina ha un'origine diversa:
+    PII_CORS_ORIGINS=*        (sviluppo locale; aprendo il file da disco l'origine e' "null")
+  In API mode serve anche la chiave (PII_API_KEY): si incolla nel campo, NON sta nell'URL.
+
+  Cosa NON fa: non salva mai testo, risultato o dizionario (solo URL e, se richiesto,
+  la chiave in sessionStorage). Il dizionario vive nella memoria della scheda.
+-->
+<style>
+  :root{
+    --violet:#7c3aed; --violet-d:#6d28d9; --violet-l:#a78bfa; --violet-bg:#f0ebff;
+    --ink:#1a1530; --ink-2:#2a2342; --muted:#6b6480;
+    --bg:#faf9ff; --card:#ffffff; --line:#eae6f7; --field:#fdfcff;
+    --ok:#15803d; --ok-bg:#ecfdf3; --warn:#b45309; --warn-bg:#fffbeb; --err:#b91c1c; --err-bg:#fef2f2;
+    --radius:14px; --shadow:0 4px 16px rgba(124,58,237,.08);
+    --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --violet:#a78bfa; --violet-d:#c4b5fd; --violet-l:#c4b5fd; --violet-bg:#2a2146;
+      --ink:#ece9f7; --ink-2:#d6d1ea; --muted:#9d96b5;
+      --bg:#120f1d; --card:#1b1729; --line:#2e2843; --field:#161222;
+      --ok:#4ade80; --ok-bg:#10271a; --warn:#fbbf24; --warn-bg:#2a2010; --err:#f87171; --err-bg:#2c1414;
+      --shadow:0 4px 16px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --violet:#a78bfa; --violet-d:#c4b5fd; --violet-l:#c4b5fd; --violet-bg:#2a2146;
+    --ink:#ece9f7; --ink-2:#d6d1ea; --muted:#9d96b5;
+    --bg:#120f1d; --card:#1b1729; --line:#2e2843; --field:#161222;
+    --ok:#4ade80; --ok-bg:#10271a; --warn:#fbbf24; --warn-bg:#2a2010; --err:#f87171; --err-bg:#2c1414;
+    --shadow:0 4px 16px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.5;font-size:15px}
+  a{color:var(--violet)}
+  .wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:0 60px}
+
+  header{display:flex;align-items:center;gap:12px;padding-block:18px;flex-wrap:wrap}
+  header img{width:40px;height:40px}
+  header h1{font-size:1.3rem;margin:0;letter-spacing:-.02em}
+  header h1 small{font-weight:600;color:var(--muted);font-size:.85rem;margin-left:6px}
+  header .sp{flex:1}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:16px 18px;margin-bottom:16px;min-width:0}
+  .card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 12px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card h2 .sp{flex:1}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  label.f{display:block;font-size:.8rem;font-weight:700;color:var(--ink-2);margin-bottom:4px}
+  input[type=text],input[type=password],input[type=url],textarea{
+    width:100%;font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;outline:none}
+  input:focus,textarea:focus{border-color:var(--violet-l);box-shadow:0 0 0 3px color-mix(in srgb,var(--violet) 18%,transparent)}
+  textarea{font-family:var(--mono);font-size:13px;resize:vertical;min-height:230px}
+  .conn{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:12px;align-items:end}
+  @media(max-width:760px){.conn{grid-template-columns:1fr}}
+  .keyrow{display:flex;gap:6px}
+  .keyrow input{flex:1;min-width:0}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font:inherit;font-weight:700;font-size:.9rem;
+    padding:9px 15px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+    cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--violet-l)}
+  .btn.primary{background:var(--violet);border-color:var(--violet);color:#fff}
+  :root[data-theme="dark"] .btn.primary{color:#120f1d}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#120f1d}}
+  .btn.sm{padding:5px 10px;font-size:.8rem;font-weight:600}
+  .btn:disabled{opacity:.55;cursor:progress}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+  .status{margin-top:12px;font-size:.85rem;border-radius:10px;padding:9px 12px;display:flex;gap:8px;flex-wrap:wrap;
+    align-items:center;background:var(--violet-bg);color:var(--ink-2)}
+  .status.ok{background:var(--ok-bg);color:var(--ok)}
+  .status.err{background:var(--err-bg);color:var(--err)}
+  .status.warn{background:var(--warn-bg);color:var(--warn)}
+  .status code{font-family:var(--mono);font-size:.8rem}
+  .pill{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--ink-2)}
+
+  .samples{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .drop{margin-top:10px;border:1.5px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:.85rem;color:var(--muted);
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .drop.over{border-color:var(--violet);background:var(--violet-bg)}
+  .drop b{color:var(--ink-2)}
+
+  .opts{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+  .switch{display:inline-flex;gap:8px;align-items:center;font-size:.88rem;font-weight:600;cursor:pointer;user-select:none}
+  .switch input{accent-color:var(--violet);width:16px;height:16px}
+  details.tags summary{cursor:pointer;font-size:.88rem;font-weight:600}
+  .taglist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:.75rem;font-weight:700;padding:4px 9px;border-radius:999px;border:1px solid;cursor:pointer;user-select:none;font-family:var(--mono)}
+  .tag.off{opacity:.45;text-decoration:line-through}
+
+  .tabs{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
+  .tabs button{border:0;background:transparent;font:inherit;font-size:.8rem;font-weight:700;color:var(--muted);padding:5px 10px;border-radius:7px;cursor:pointer}
+  .tabs button.on{background:var(--card);color:var(--violet);box-shadow:var(--shadow)}
+
+  .view{border:1px solid var(--line);border-radius:10px;background:var(--field);min-height:230px;max-height:560px;overflow:auto;
+    padding:11px;font-family:var(--mono);font-size:13px;white-space:pre-wrap;word-break:break-word}
+  .view.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:inherit;text-align:center}
+  .ph{border:1px solid;border-radius:5px;padding:0 4px;font-weight:700;cursor:help}
+  .ph .ck{font-size:.7em;margin-left:2px}
+  .ph .src{font-size:.65em;opacity:.7;margin-left:3px;font-weight:600}
+
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 2px}
+  .stat{font-size:.8rem;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px 9px}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:.85rem}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg)}
+  tr:last-child td{border-bottom:0}
+  td.k{font-family:var(--mono);font-weight:700;white-space:nowrap}
+  td.v{font-family:var(--mono);word-break:break-word}
+  .muted{color:var(--muted);font-size:.85rem}
+  .hint{font-size:.8rem;color:var(--muted);margin:6px 0 0}
+  pre.log{font-family:var(--mono);font-size:12px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px;
+    max-height:360px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word}
+  .spin{width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;
+    background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:.88rem;font-weight:600;transition:.2s;
+    max-width:calc(100vw - 32px)}
+  #toast.show{opacity:1;transform:translateX(-50%)}
+  #toast.err{background:var(--err);color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <img src="assets/mascot_shield.png" alt="" onerror="this.remove()" />
+  <h1>rizzo-pii <small>Playground API</small></h1>
+  <div class="sp"></div>
+  <a class="btn sm" href="index.html">← Home</a>
+</header>
+
+<!-- CONNESSIONE -->
+<section class="card">
+  <h2>1 · Server</h2>
+  <div class="conn">
+    <div>
+      <label class="f" for="base">URL del server</label>
+      <input id="base" type="url" spellcheck="false" placeholder="http://127.0.0.1:5005" />
+    </div>
+    <div>
+      <label class="f" for="key">API key <span class="muted">(se <code>auth_required</code>)</span></label>
+      <div class="keyrow">
+        <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="PII_API_KEY" />
+        <button class="btn sm" id="eye" type="button" title="Mostra/nascondi">👁</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn" id="check">Verifica</button>
+    </div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label class="switch"><input type="checkbox" id="remember" /> Ricorda la chiave in questa scheda (sessionStorage)</label>
+  </div>
+  <div id="conn" class="status">Premi <b>Verifica</b> per interrogare <code>GET /health</code>.</div>
+</section>
+
+<div class="grid2">
+  <!-- INPUT -->
+  <section class="card">
+    <h2>2 · Documento <span class="sp"></span>
+      <button class="btn sm" id="clear">Svuota</button>
+    </h2>
+    <div class="samples" id="samples"></div>
+    <textarea id="text" spellcheck="false" placeholder="Incolla qui il testo da anonimizzare…"></textarea>
+    <div class="drop" id="drop">
+      <input type="file" id="file" accept=".pdf,.md,.markdown,.txt,.text" hidden />
+      <button class="btn sm" id="pick" type="button">📎 File .pdf/.md/.txt</button>
+      <span id="fileInfo">oppure trascina qui un file (va a <code>/analyze</code> come multipart)</span>
+      <button class="btn sm" id="unfile" type="button" hidden>✕</button>
+    </div>
+    <div class="opts">
+      <label class="switch"><input type="checkbox" id="mapping" checked /> Dizionario reversibile (<code>include_mapping</code>)</label>
+      <details class="tags">
+        <summary>Tag esclusi (<code>exclude_tags</code>): <span id="exclN">nessuno</span></summary>
+        <div class="taglist" id="taglist"></div>
+        <p class="hint">Un tag barrato viene rilevato ma lasciato in chiaro. Elenco da <code>GET /settings</code> (o quello di default se il server non risponde).</p>
+      </details>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="go">🔒 Anonimizza</button>
+      <button class="btn" id="pdf">📄 Scarica PDF anonimizzato</button>
+      <span class="muted" id="timing"></span>
+    </div>
+  </section>
+
+  <!-- RISULTATO -->
+  <section class="card">
+    <h2>3 · Risultato <span class="sp"></span>
+      <span class="tabs" role="tablist">
+        <button class="on" data-v="prev">Evidenziato</button>
+        <button data-v="text">Testo</button>
+        <button data-v="json">JSON</button>
+      </span>
+    </h2>
+    <div id="vPrev" class="view empty">Il testo anonimizzato apparirà qui.</div>
+    <textarea id="vText" readonly hidden></textarea>
+    <pre id="vJson" class="log" hidden></pre>
+    <div class="stats" id="stats"></div>
+    <div class="legend" id="legend"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" id="copy">Copia testo anonimizzato</button>
+      <button class="btn sm" id="toRestore">Usa nel ripristino ↓</button>
+    </div>
+  </section>
+</div>
+
+<div class="grid2">
+  <!-- DIZIONARIO -->
+  <section class="card">
+    <h2>4 · Dizionario <span class="sp"></span><span class="pill" id="mapN">0</span></h2>
+    <div id="mapEmpty" class="muted">Nessun dizionario: anonimizza qualcosa con il dizionario reversibile attivo.</div>
+    <div class="tablewrap" id="mapWrap" hidden>
+      <table><thead><tr><th>Placeholder</th><th>Valore</th><th>Fonte</th></tr></thead><tbody id="mapRows"></tbody></table>
+    </div>
+    <p class="hint">Resta solo nella memoria di questa scheda: ricaricando la pagina si perde.</p>
+  </section>
+
+  <!-- RIPRISTINO -->
+  <section class="card">
+    <h2>5 · Ripristino (lato client)</h2>
+    <textarea id="rin" spellcheck="false" style="min-height:130px"
+      placeholder="Incolla la risposta dell'LLM con [FULLNAME_1], **IBAN_1**…"></textarea>
+    <div class="row" style="margin:10px 0">
+      <button class="btn primary" id="restore">🔓 Ripristina</button>
+      <span class="muted" id="rinfo"></span>
+    </div>
+    <div id="rout" class="view empty" style="min-height:110px">Il testo con i valori reali apparirà qui.</div>
+  </section>
+</div>
+
+<!-- LOG -->
+<section class="card">
+  <h2>Log richieste <span class="sp"></span><button class="btn sm" id="logClear">Pulisci</button></h2>
+  <pre class="log" id="log">—</pre>
+  <p class="hint">Solo metodo, path, status, durata e header <code>X-PII-*</code>: il corpo delle richieste non viene loggato.</p>
+</section>
+
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+
+/* ---- esempi con dati FINTI (checksum validi dove serve) ---- */
+const SAMPLES={
+  'Anagrafica':'Mi chiamo Mario Rossi, nato a Milano il 12/06/1985, CF RSSMRA85H12F205Y.\nAbito in Via Garibaldi 24, 00185 Roma (RM). Tel. +39 333 1234567, email m.rossi@studio.it.',
+  'Atto legale':'TRIBUNALE DI MILANO — R.G. n. 1234/2024\nIl sottoscritto Avv. Giulia Bianchi, del foro di Milano, in qualità di difensore della società Edilnord S.r.l. (P.IVA 12345678903), con sede in Corso Buenos Aires 15, 20124 Milano (MI), PEC giulia.bianchi@pec.avvocati.it,\nCHIEDE\nla condanna del sig. Luca Verdi al pagamento di € 12.500,00 mediante bonifico sull\'IBAN IT60X0542811101000000123456.',
+  'Contratto':'Il venditore Anna Ferri (carta d\'identità CA12345AB) vende l\'immobile censito al Catasto Fabbricati del Comune di Torino, Foglio 12, part. 345, sub. 6, e l\'autovettura targata AB 123 CD, per il prezzo di € 180.000,00. Sito: www.immobiliareferri.it',
+  'Clinico':'Paziente di 45 anni, sesso femminile, ricoverata il 03/02/2025 alle ore 15:30 presso la clinica. Referente: dott. Paolo Neri, tel 02 12345678.'
+};
+
+const DEFAULT_TAGS=['FULLNAME','AGE','GENDER','DATE','TIME','STREET','BUILDINGNUM','ZIPCODE','CITY','PROVINCE',
+  'EMAIL','TELEPHONENUM','CF','PIVA','ID_DOC','IBAN','CREDITCARDNUMBER','AMOUNT','TARGA','ORG','DOCID','CATASTO','URL']
+  .map(tag=>({tag}));
+
+let TAGS=DEFAULT_TAGS, EXCL=new Set(), FILE=null, DATA=null, MAP={}, VIEW='prev';
+
+/* ---- storage: solo URL (localStorage) e, se richiesto, chiave (sessionStorage) ---- */
+function sget(store,k){try{return window[store].getItem(k)}catch(e){return null}}
+function sset(store,k,v){try{v==null?window[store].removeItem(k):window[store].setItem(k,v)}catch(e){}}
+
+function hue(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h;}
+function dark(){const t=document.documentElement.dataset.theme;
+  return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;}
+function colors(label){const h=hue(label);
+  return dark()?{bg:`hsl(${h} 35% 18%)`,bd:`hsl(${h} 35% 38%)`,tx:`hsl(${h} 60% 78%)`}
+               :{bg:`hsl(${h} 56% 96%)`,bd:`hsl(${h} 42% 81%)`,tx:`hsl(${h} 40% 38%)`};}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function toast(msg,ok=true,ms=2200){const t=$('toast');t.textContent=msg;t.className='show'+(ok?'':' err');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.className='',ms);}
+
+function base(){return ($('base').value.trim()||'http://127.0.0.1:5005').replace(/\/+$/,'');}
+function headers(extra){const h=Object.assign({},extra||{});const k=$('key').value.trim();
+  if(k)h['Authorization']='Bearer '+k;return h;}
+
+function log(line){const el=$('log');const ts=new Date().toLocaleTimeString();
+  el.textContent=(el.textContent==='—'?'':el.textContent)+`${ts}  ${line}\n`;el.scrollTop=el.scrollHeight;}
+
+/* fetch con diagnosi: un errore di rete da browser e' quasi sempre CORS, server spento o mixed content */
+async function call(method,path,opts={}){
+  const url=base()+path;const t0=performance.now();
+  let resp;
+  try{resp=await fetch(url,Object.assign({method,headers:headers(opts.headers)},opts.init||{}));}
+  catch(e){
+    const ms=Math.round(performance.now()-t0);
+    log(`${method} ${path}  ✕ rete (${ms} ms)`);
+    const err=new Error(networkHint(url));err.network=true;throw err;
+  }
+  const ms=Math.round(performance.now()-t0);
+  const xh=['X-PII-Redactions','X-PII-Residual','X-PII-Skipped','X-PII-Notfound']
+    .map(h=>resp.headers.get(h)!=null?`${h.slice(6).toLowerCase()}=${resp.headers.get(h)}`:null).filter(Boolean).join(' ');
+  log(`${method} ${path}  ${resp.status}  ${ms} ms${xh?'  '+xh:''}`);
+  resp.ms=ms;return resp;
+}
+function networkHint(url){
+  if(location.protocol==='https:'&&url.startsWith('http:')&&!/^http:\/\/(127\.0\.0\.1|localhost|\[::1\])/.test(url))
+    return 'Richiesta bloccata: pagina in HTTPS verso un server HTTP (mixed content).';
+  return 'Nessuna risposta leggibile. Server spento, oppure CORS non abilitato: avvia il server con PII_CORS_ORIGINS=* (o con l\'origine di questa pagina: '+(location.origin==='null'?'null':location.origin)+').';
+}
+async function jsonOf(resp){try{return await resp.json()}catch(e){return {}}}
+function errMsg(resp,d){
+  if(resp.status===401)return '401 — API key mancante o errata.';
+  return `${resp.status} — ${d.error||resp.statusText||'errore'}`;
+}
+
+/* ---- 1. health + settings ---- */
+function setConn(cls,html){const c=$('conn');c.className='status'+(cls?' '+cls:'');c.innerHTML=html;}
+async function check(){
+  const b=$('check');b.disabled=true;
+  setConn('','<span class="spin"></span> Interrogo <code>/health</code>…');
+  sset('localStorage','pii_playground_base',base());
+  try{
+    const r=await call('GET','/health');const d=await jsonOf(r);
+    const pills=[d.model&&`modello ${d.model}`,d.app_version&&`app ${d.app_version}`,d.device,
+      d.api_mode?'api mode':'desktop mode',d.auth_required?'🔑 chiave richiesta':'senza chiave',
+      d.tags&&`${d.tags} tag`].filter(Boolean).map(p=>`<span class="pill">${esc(p)}</span>`).join('');
+    if(r.status===503){setConn('warn','⏳ Server su, modello in caricamento. '+pills);return;}
+    if(!r.ok){setConn('err','✕ '+esc(errMsg(r,d)));return;}
+    if(d.mapping_enabled===false)$('mapping').checked=false;
+    await loadSettings(d);
+    const keyWarn=d.auth_required&&!$('key').value.trim()?' — <b>inserisci la API key</b>':'';
+    setConn(keyWarn?'warn':'ok','✓ Pronto '+pills+keyWarn);
+  }catch(e){setConn('err','✕ '+esc(e.message));}
+  finally{b.disabled=false;}
+}
+async function loadSettings(health){
+  if(health.auth_required&&!$('key').value.trim())return;
+  try{
+    const r=await call('GET','/settings');const d=await jsonOf(r);
+    if(!r.ok){if(r.status===401)setConn('err','✕ 401 — API key errata.');return;}
+    if(Array.isArray(d.tags)&&d.tags.length){TAGS=d.tags;EXCL=new Set(d.excluded_tags||[]);renderTags();}
+  }catch(e){}
+}
+
+/* ---- 2. input ---- */
+function renderTags(){
+  const el=$('taglist');el.innerHTML='';
+  for(const t of TAGS){const c=colors(t.tag);const s=document.createElement('span');
+    s.className='tag'+(EXCL.has(t.tag)?' off':'');s.textContent=t.tag;
+    s.style.background=c.bg;s.style.borderColor=c.bd;s.style.color=c.tx;
+    s.title=[t.it,t.example&&('es. '+t.example)].filter(Boolean).join('\n');
+    s.onclick=()=>{EXCL.has(t.tag)?EXCL.delete(t.tag):EXCL.add(t.tag);renderTags();};
+    el.appendChild(s);}
+  $('exclN').textContent=EXCL.size?[...EXCL].join(', '):'nessuno';
+}
+function setFile(f){FILE=f||null;$('unfile').hidden=!FILE;
+  $('fileInfo').innerHTML=FILE?`<b>${esc(FILE.name)}</b> · ${(FILE.size/1024).toFixed(1)} KB — ha la precedenza sul testo`
+    :'oppure trascina qui un file (va a <code>/analyze</code> come multipart)';
+  if(!FILE)$('file').value='';}
+
+function payload(){
+  const text=$('text').value;
+  if(FILE){const fd=new FormData();fd.append('file',FILE);
+    fd.append('exclude_tags',[...EXCL].join(','));fd.append('include_mapping',$('mapping').checked?'true':'false');
+    return {init:{body:fd}};}
+  if(!text.trim())return null;
+  return {headers:{'Content-Type':'application/json'},
+    init:{body:JSON.stringify({text,exclude_tags:[...EXCL],include_mapping:$('mapping').checked})}};
+}
+
+async function busy(btn,fn){const old=btn.innerHTML;btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span> '+btn.textContent.replace(/^\S+\s/,'');
+  try{return await fn()}finally{btn.disabled=false;btn.innerHTML=old;}}
+
+async function analyze(){
+  const p=payload();if(!p){toast('Scrivi un testo o scegli un file',false);return;}
+  await busy($('go'),async()=>{
+    try{
+      const r=await call('POST','/analyze',p);const d=await jsonOf(r);
+      if(!r.ok){toast(errMsg(r,d),false,5000);return;}
+      if(FILE&&d.source_text)$('text').value=d.source_text;
+      DATA=d;MAP=d.mapping||{};
+      $('timing').textContent=`${r.ms} ms`;
+      render();
+      toast(`${d.n_entities} entità, ${d.n_unique} valori distinti`);
+    }catch(e){toast(e.message,false,7000);}
+  });
+}
+
+async function downloadPdf(){
+  const p=payload();if(!p){toast('Scrivi un testo o scegli un file',false);return;}
+  await busy($('pdf'),async()=>{
+    try{
+      const r=await call('POST','/pdf',p);
+      if(!r.ok){const d=await jsonOf(r);toast(errMsg(r,d),false,6000);return;}
+      const blob=await r.blob();
+      const cd=r.headers.get('Content-Disposition')||'';
+      const m=cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+      a.download=m?decodeURIComponent(m[1]):'documento_anonimizzato.pdf';
+      document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+      const res=+(r.headers.get('X-PII-Residual')||0),sk=+(r.headers.get('X-PII-Skipped')||0);
+      if(r.headers.get('X-PII-Residual')==null&&location.origin!==new URL(base()).origin)
+        toast('PDF scaricato (header X-PII-* non leggibili: CORS senza Expose-Headers?)',true,5000);
+      else if(res+sk>0)toast(`Attenzione: ${res} valori ancora leggibili, ${sk} troppo corti — restano in chiaro`,false,9000);
+      else toast('PDF anonimizzato scaricato');
+    }catch(e){toast(e.message,false,7000);}
+  });
+}
+
+/* ---- 3. risultato ---- */
+function render(){
+  const d=DATA;if(!d)return;
+  const prev=$('vPrev');prev.classList.remove('empty');prev.innerHTML='';
+  for(const s of d.segments||[]){
+    if(s.label){const c=colors(s.label);const sp=document.createElement('span');sp.className='ph';
+      sp.style.background=c.bg;sp.style.borderColor=c.bd;sp.style.color=c.tx;
+      sp.title=(s.t!=null?s.t+'\n':'')+`${s.label} · ${s.src}${s.validated?' · checksum ✓':''}`;
+      sp.innerHTML=esc(s.ph.replace(/[\[\]]/g,''))+(s.validated?'<span class="ck">✓</span>':'')+
+        `<span class="src">${s.src==='regex'?'rx':'ml'}</span>`;
+      prev.appendChild(sp);}
+    else prev.appendChild(document.createTextNode(s.t));
+  }
+  if(!(d.segments||[]).length){prev.classList.add('empty');prev.textContent='(nessun testo)';}
+  $('vText').value=d.anonymized_text||'';
+  const safe=Object.assign({},d);          // il JSON grezzo, senza ripetere il documento intero
+  if(safe.source_text)safe.source_text=`<${safe.source_text.length} caratteri>`;
+  $('vJson').textContent=JSON.stringify(safe,null,2);
+  const bs=d.by_source||{};
+  $('stats').innerHTML=[['entità',d.n_entities],['distinte',d.n_unique],['modello',bs.modello||0],['regex',bs.regex||0],
+    ['caratteri',(d.n_chars||0).toLocaleString('it-IT')],['chunk',d.n_chunks]]
+    .map(([k,v])=>`<span class="stat"><b>${esc(v??'–')}</b> ${k}</span>`).join('')+
+    ((d.excluded_tags||[]).length?`<span class="stat"><b>${d.excluded_tags.length}</b> esclusi: ${esc(d.excluded_tags.join(', '))}</span>`:'');
+  $('legend').innerHTML=Object.entries(d.by_label||{}).map(([k,v])=>{const c=colors(k);
+    return `<span class="tag" style="cursor:default;background:${c.bg};border-color:${c.bd};color:${c.tx}">${esc(k)} ${v}</span>`;}).join('');
+  renderMap();
+}
+function setView(v){VIEW=v;
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  $('vPrev').hidden=v!=='prev';$('vText').hidden=v!=='text';$('vJson').hidden=v!=='json';}
+
+/* ---- 4. dizionario ---- */
+function renderMap(){
+  const keys=Object.keys(MAP);$('mapN').textContent=keys.length;
+  $('mapWrap').hidden=!keys.length;$('mapEmpty').hidden=!!keys.length;
+  if(DATA&&DATA.mapping_enabled===false)
+    $('mapEmpty').textContent='Dizionario disattivato: anonimizzazione definitiva, il server non ha mandato i valori.';
+  const src={};for(const s of (DATA&&DATA.segments)||[])if(s.label)src[s.ph]=s.src+(s.validated?' ✓':'');
+  $('mapRows').innerHTML=keys.map(ph=>{const lab=ph.slice(1,ph.lastIndexOf('_'));const c=colors(lab);
+    return `<tr><td class="k" style="color:${c.tx}">${esc(ph)}</td><td class="v">${esc(MAP[ph])}</td><td class="muted">${esc(src[ph]||'')}</td></tr>`;}).join('');
+}
+
+/* ---- 5. ripristino: stessa regex della guida JAVA_CLIENT.md ----
+   parentesi e grassetto opzionali; spazi solo DENTRO le parentesi; (?!\d) evita FULLNAME_1 dentro FULLNAME_12 */
+function restore(){
+  const txt=$('rin').value;const keys=Object.keys(MAP);
+  if(!txt.trim()){toast('Incolla il testo da ripristinare',false);return;}
+  if(!keys.length){toast('Nessun dizionario in memoria',false);return;}
+  let out=txt,n=0;
+  for(const ph of keys.sort((a,b)=>b.length-a.length)){
+    const inner=ph.slice(1,-1).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const rx=new RegExp('\\*{0,2}(?:\\[\\s*)?(?<![A-Z0-9_])'+inner+'(?!\\d)(?:\\s*\\])?\\*{0,2}','g');
+    out=out.replace(rx,()=>{n++;return MAP[ph];});
+  }
+  const left=[...new Set(out.match(/\[?\b[A-Z][A-Z_]*_\d+\b\]?/g)||[])];
+  const o=$('rout');o.classList.remove('empty');o.textContent=out;
+  $('rinfo').textContent=`${n} sostituzioni`+(left.length?` · non nel dizionario: ${left.join(', ')}`:'');
+}
+
+/* ---- wiring ---- */
+function init(){
+  $('base').value=sget('localStorage','pii_playground_base')||'http://127.0.0.1:5005';
+  const k=sget('sessionStorage','pii_playground_key');if(k){$('key').value=k;$('remember').checked=true;}
+  for(const name of Object.keys(SAMPLES)){const b=document.createElement('button');b.className='btn sm';b.textContent=name;
+    b.onclick=()=>{setFile(null);$('text').value=SAMPLES[name];};$('samples').appendChild(b);}
+  $('text').value=SAMPLES['Atto legale'];
+  renderTags();
+
+  $('check').onclick=check;
+  $('base').addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+  $('key').addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+  $('key').addEventListener('input',()=>{if($('remember').checked)sset('sessionStorage','pii_playground_key',$('key').value||null);});
+  $('remember').onchange=()=>sset('sessionStorage','pii_playground_key',$('remember').checked&&$('key').value?$('key').value:null);
+  $('eye').onclick=()=>{$('key').type=$('key').type==='password'?'text':'password';};
+
+  $('pick').onclick=()=>$('file').click();
+  $('file').onchange=()=>setFile($('file').files[0]);
+  $('unfile').onclick=()=>setFile(null);
+  const drop=$('drop');
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)setFile(f);});
+  $('clear').onclick=()=>{$('text').value='';setFile(null);};
+
+  $('go').onclick=analyze;
+  $('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))analyze();});
+  $('pdf').onclick=downloadPdf;
+  document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+  $('copy').onclick=()=>{const t=DATA&&DATA.anonymized_text;if(!t){toast('Niente da copiare',false);return;}
+    navigator.clipboard.writeText(t).then(()=>toast('Copiato'),()=>toast('Copia non consentita',false));};
+  $('toRestore').onclick=()=>{if(!DATA)return;$('rin').value=DATA.anonymized_text;$('rin').scrollIntoView({behavior:'smooth',block:'center'});};
+  $('restore').onclick=restore;
+  $('logClear').onclick=()=>{$('log').textContent='—';};
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{renderTags();render();});
+
+  check();
+}
+init();
+</script>
+</body>
+</html>
